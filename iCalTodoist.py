@@ -7,9 +7,7 @@ import caldav
 import requests
 import configparser
 import datetime
-import sys
 import uuid
-import json
 import calendar
 import re
 
