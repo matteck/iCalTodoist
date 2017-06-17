@@ -42,7 +42,6 @@ ical_client = caldav.DAVClient(url=ICAL_URL,
 found = False
 for cal in ical_client.principal().calendars():
     if cal.name == DEFAULT_CALENDAR:
-        print(cal.name)
         urls = [x[0] for x in cal.children()]
         found = True
         break
