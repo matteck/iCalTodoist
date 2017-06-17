@@ -36,36 +36,38 @@ def todoist_get(command):
     url = "%s/%s?token=%s" % (TODOIST_API_URL, command, TODOIST_API_TOKEN)
     return requests.get(url).json()
 
-todoist_labels_json = todoist_get("labels")
-todoist_labels = {}
-for i in todoist_labels_json:
-    todoist_labels[i['name'].lower()] = i['id']
-if TODOIST_LABEL.lower() in todoist_labels:
-    default_label_id = todoist_labels[TODOIST_LABEL.lower()]
-else:
-    default_label_id = None
-
-todoist_projects_json = todoist_get("projects")
-todoist_projects = {}
-for i in todoist_projects_json:
-    todoist_projects[i['name'].lower()] = i['id']
-if TODOIST_PROJECT.lower() in todoist_projects:
-    default_project_id = todoist_projects[TODOIST_PROJECT.lower()]
-else:
-    default_project_id = None
-
 ical_client = caldav.DAVClient(url=ICAL_URL,
                           username=ICAL_USERNAME,
                           password=ICAL_PASSWORD)
 found = False
 for cal in ical_client.principal().calendars():
     if cal.name == DEFAULT_CALENDAR:
+        print(cal.name)
         urls = [x[0] for x in cal.children()]
         found = True
         break
 if not found:
     print('Default list "%s" not found')
     sys.exit(1)
+
+if urls:
+    todoist_labels_json = todoist_get("labels")
+    todoist_labels = {}
+    for i in todoist_labels_json:
+        todoist_labels[i['name'].lower()] = i['id']
+    if TODOIST_LABEL.lower() in todoist_labels:
+        default_label_id = todoist_labels[TODOIST_LABEL.lower()]
+    else:
+        default_label_id = None
+
+    todoist_projects_json = todoist_get("projects")
+    todoist_projects = {}
+    for i in todoist_projects_json:
+        todoist_projects[i['name'].lower()] = i['id']
+    if TODOIST_PROJECT.lower() in todoist_projects:
+        default_project_id = todoist_projects[TODOIST_PROJECT.lower()]
+    else:
+        default_project_id = None
 
 for task_url in urls:
     task = requests.get(task_url, auth=(ICAL_USERNAME, ICAL_PASSWORD))
@@ -133,7 +135,7 @@ for task_url in urls:
     if resp.status_code == 200 and "id" in j:
         print("Successfully submitted:", data)
         print("Todoist ID:", j["id"])    
-        # ical_client.delete(task_url)
+        ical_client.delete(task_url)
     else:
         print("Failed")
         print(data)
