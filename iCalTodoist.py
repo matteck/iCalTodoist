@@ -3,70 +3,92 @@
 # TODO: capture the description as a note
 # TODO: look for labels using "@"
 
-import caldav
-import requests
-import configparser
-import datetime
 import uuid
 import calendar
 import re
+import os
+import sys
+import configparser
+import caldav
+import requests
 
-config = configparser.ConfigParser(defaults = {'TODOIST_DUE': '', 'TODOIST_PRIORITY': '', 'TODOIST_LABEL': '', 'TODOIST_PROJECT': ''})
-config.read("iCalTodoist.ini")
-ICAL_USERNAME = config['icloud']['email']
-ICAL_PASSWORD = config['icloud']['password']
-ICAL_URL = config['icloud']['url']
-ICAL_TIMEZONE = config['icloud']['timezone']
-DEFAULT_CALENDAR = config['icloud']['default_list']
-TODOIST_API_TOKEN = config['todoist']['api_token']
-TODOIST_API_URL = config['todoist']['api_url']
-TODOIST_DUE = config['todoist']['due']
-TODOIST_PRIORITY = config['todoist']['priority']
-TODOIST_LABEL = config['todoist']['label']
-TODOIST_PROJECT = config['todoist']['project']
+myconfig = configparser.ConfigParser(defaults={
+                                   'TODOIST_DUE': '', 'TODOIST_PRIORITY': '', 'TODOIST_LABEL': '', 'TODOIST_PROJECT': ''})
+myconfig.read("iCalTodoist.ini")
+ICAL_USERNAME = myconfig['icloud']['email']
+ICAL_PASSWORD = myconfig['icloud']['password']
+ICAL_URL = myconfig['icloud']['url']
+ICAL_TIMEZONE = myconfig['icloud']['timezone']
+DEFAULT_CALENDAR = myconfig['icloud']['default_list']
+TODOIST_API_TOKEN = myconfig['todoist']['api_token']
+TODOIST_API_URL = myconfig['todoist']['api_url']
+TODOIST_DUE = myconfig['todoist']['due']
+TODOIST_PRIORITY = myconfig['todoist']['priority']
+TODOIST_LABEL = myconfig['todoist']['label']
+TODOIST_PROJECT = myconfig['todoist']['project']
+
+
+def debug(msg):
+    if 'DEBUG' in os.environ:
+        print(msg)
+
 
 def todoist_post(command, data):
     url = "%s/%s?token=%s" % (TODOIST_API_URL, command, TODOIST_API_TOKEN)
     request_id = str(uuid.uuid4())
     headers = {'Content-Type': 'application/json',
-                'X-Request-Id': request_id}
-    return requests.post(url, json=data, headers=headers)
+               'X-Request-Id': request_id}
+    debug(url)
+    debug(headers)
+    debug(data)
+    ret = requests.post(url, json=data, headers=headers)
+    if str(ret.status_code)[0] != '2':
+        # WORKAROUND API is currently broken
+        if 'WORKAROUND' in os.environ and ret.status_code == 400 and ret.content == b'Invalid argument value\n':
+            print('WORKAROUND')
+            return {"id": "workaround"}
+        raise Exception("Post failed: %s\n%s" % (ret.status_code, ret.content))
+    return ret.json()
+
 
 def todoist_get(command):
     url = "%s/%s?token=%s" % (TODOIST_API_URL, command, TODOIST_API_TOKEN)
     return requests.get(url).json()
 
+
 ical_client = caldav.DAVClient(url=ICAL_URL,
-                          username=ICAL_USERNAME,
-                          password=ICAL_PASSWORD)
-found = False
+                               username=ICAL_USERNAME,
+                               password=ICAL_PASSWORD)
+urls = None
+cal_found = None
 for cal in ical_client.principal().calendars():
+    debug(cal.name)
     if cal.name == DEFAULT_CALENDAR:
         urls = [x[0] for x in cal.children()]
-        found = True
+        cal_found = True
         break
-if not found:
-    print('Default list "%s" not found')
-    sys.exit(1)
+if not cal_found: 
+    raise Exception('Default list "%s" not found' % DEFAULT_CALENDAR)
+if not urls:
+    sys.exit(0)
 
-if urls:
-    todoist_labels_json = todoist_get("labels")
-    todoist_labels = {}
-    for i in todoist_labels_json:
-        todoist_labels[i['name'].lower()] = i['id']
-    if TODOIST_LABEL.lower() in todoist_labels:
-        default_label_id = todoist_labels[TODOIST_LABEL.lower()]
-    else:
-        default_label_id = None
+todoist_labels_json = todoist_get("labels")
+todoist_labels = {}
+for i in todoist_labels_json:
+    todoist_labels[i['name'].lower()] = i['id']
+if TODOIST_LABEL.lower() in todoist_labels:
+    default_label_id = todoist_labels[TODOIST_LABEL.lower()]
+else:
+    default_label_id = None
 
-    todoist_projects_json = todoist_get("projects")
-    todoist_projects = {}
-    for i in todoist_projects_json:
-        todoist_projects[i['name'].lower()] = i['id']
-    if TODOIST_PROJECT.lower() in todoist_projects:
-        default_project_id = todoist_projects[TODOIST_PROJECT.lower()]
-    else:
-        default_project_id = None
+todoist_projects_json = todoist_get("projects")
+todoist_projects = {}
+for i in todoist_projects_json:
+    todoist_projects[i['name'].lower()] = i['id']
+if TODOIST_PROJECT.lower() in todoist_projects:
+    default_project_id = todoist_projects[TODOIST_PROJECT.lower()]
+else:
+    default_project_id = None
 
 for task_url in urls:
     task = requests.get(task_url, auth=(ICAL_USERNAME, ICAL_PASSWORD))
@@ -82,7 +104,8 @@ for task_url in urls:
     datekey = "DUE;TZID=%s" % ICAL_TIMEZONE
     if datekey in task_data:
         raw = task_data[datekey]
-        due_string = "%s %s %s:%s" % (raw[6:8], calendar.month_name[int(raw[4:6])], raw[9:11], raw[11:13])
+        due_string = "%s %s %s:%s" % (
+            raw[6:8], calendar.month_name[int(raw[4:6])], raw[9:11], raw[11:13])
     else:
         due_string = TODOIST_DUE
     if "PRIORITY" in task_data:
@@ -95,7 +118,7 @@ for task_url in urls:
             priority = 2
     else:
         priority = int(TODOIST_PRIORITY)
-    
+
     # Search for both labels and projects using "#" because it's easy to add via Siri as "hashtag"
     ical_tags = re.findall('#(\w+)', content)
 
@@ -118,7 +141,7 @@ for task_url in urls:
             content = content.replace('#' + t, '')
 
     content = ' '.join(content.split())
-    
+
     data = {'content': content}
     if project_id:
         data['project_id'] = project_id
@@ -128,15 +151,13 @@ for task_url in urls:
         data['due_string'] = due_string
     if priority:
         data['priority'] = priority
-    
-    resp = todoist_post("tasks",data)
-    j = resp.json()
-    if resp.status_code == 200 and "id" in j:
+
+    j = todoist_post("tasks", data)
+    if "id" in j:
         print("Successfully submitted:", data)
-        print("Todoist ID:", j["id"])    
+        print("Todoist ID:", j["id"])
         ical_client.delete(task_url)
     else:
         print("Failed")
         print(data)
         print(resp.json)
-    
