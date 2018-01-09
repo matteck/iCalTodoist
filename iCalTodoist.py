@@ -154,10 +154,10 @@ for task_url in urls:
 
     j = todoist_post("tasks", data)
     if "id" in j:
-        print("Successfully submitted:", data)
-        print("Todoist ID:", j["id"])
+        debug("Successfully submitted: %s" % data)
+        debug("Todoist ID: %s" % j["id"])
         ical_client.delete(task_url)
     else:
-        print("Failed")
+        print("iCalTodoist.py failed")
         print(data)
         print(resp.json)
