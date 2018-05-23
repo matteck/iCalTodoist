@@ -124,6 +124,7 @@ for task_url in urls:
 
     project_id = None
     for t in ical_tags:
+        debug("Found tag %s" % t)
         if t.lower() in todoist_projects:
             project_id = todoist_projects[t.lower()]
             content = content.replace('#' + t, '')
