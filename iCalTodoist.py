@@ -64,6 +64,7 @@ cal_found = None
 for cal in ical_client.principal().calendars():
     debug(cal.name)
     if cal.name == DEFAULT_CALENDAR:
+        print(cal.todos())
         urls = [x[0] for x in cal.children()]
         cal_found = True
         break
